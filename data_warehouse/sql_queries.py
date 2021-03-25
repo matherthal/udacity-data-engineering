@@ -9,9 +9,9 @@ config.read('dwh.cfg')
 
 staging_events_table_drop = "DROP TABLE IF EXISTS stg_events;"
 staging_songs_table_drop = "DROP TABLE IF EXISTS stg_songs"
-songplay_table_drop = "DROP TABLE IF EXISTS song_play;"
+songplay_table_drop = "DROP TABLE IF EXISTS fact_song_plays;"
 user_table_drop = "DROP TABLE IF EXISTS dim_user;"
-song_table_drop = "DROP TABLE IF EXISTS sim_song;"
+song_table_drop = "DROP TABLE IF EXISTS dim_song;"
 artist_table_drop = "DROP TABLE IF EXISTS dim_artist;"
 time_table_drop = "DROP TABLE IF EXISTS dim_time;"
 
@@ -19,7 +19,7 @@ time_table_drop = "DROP TABLE IF EXISTS dim_time;"
 
 staging_events_table_create= ("""
 CREATE TABLE stg_events (
-    id FLOAT DEFAULT nextval('stg_events_seq') NOT NULL,
+    id BIGINT IDENTITY(1,1),
     num_songs INT NOT NULL,
     artist_id VARCHAR(100) NOT NULL,
     artist_latitude VARCHAR(100) NULL,
@@ -29,13 +29,13 @@ CREATE TABLE stg_events (
     song_id VARCHAR(100) NOT NULL,
     title VARCHAR(100) NOT NULL,
     duration DECIMAL NOT NULL,
-    year SMALLINT NOT NULL,
-)
+    year SMALLINT NOT NULL
+);
 """)
 
 staging_songs_table_create = ("""
 CREATE TABLE stg_songs (
-    id FLOAT DEFAULT nextval('stg_songs_seq') NOT NULL,
+    id BIGINT IDENTITY(1,1), 
     artist VARCHAR(100) NULL,
     auth VARCHAR(100) NOT NULL,
     firstName VARCHAR(100) NOT NULL,
@@ -58,7 +58,7 @@ CREATE TABLE stg_songs (
 
 songplay_table_create = ("""
 CREATE TABLE fact_song_plays (
-    songplay_id INTEGER IDENTITY (1, 1) PRIMARY KEY SORT KEY,
+    songplay_id INTEGER IDENTITY (1, 1),
     -- songplay_id VARCHAR(100) NOT NULL,
     user_id INT NOT NULL,
     song_id VARCHAR(100) NOT NULL,
@@ -69,53 +69,52 @@ CREATE TABLE fact_song_plays (
     location VARCHAR(200) NOT NULL, 
     user_agent VARCHAR(1000) NOT NULL
 )
-
-SORTKEY (artist_id);
+DISTSTYLE KEY
+DISTKEY (song_id)
+SORTKEY (start_time);
 """)
 
 user_table_create = ("""
-CREATE TABE dim_user (
+CREATE TABLE dim_user (
     -- id FLOAT DEFAULT nextval('dim_user_seq') NOT NULL,
-    user_id INT PRIMARY KEY SORT KEY, 
+    user_id INT, 
     first_name VARCHAR(100) NOT NULL, 
     last_name VARCHAR(100) NOT NULL, 
     gender CHAR(1) NOT NULL, 
     level INT NOT NULL
 )
-DISTSTYLE ALL
-SORTKEY (artist_id);
+DISTSTYLE ALL;
 """)
 
 song_table_create = ("""
-CREATE TABE dim_song (
+CREATE TABLE dim_song (
     -- id FLOAT DEFAULT nextval('dim_song_seq') NOT NULL,
-    song_id VARCHAR(100) PRIMARY KEY SORT KEY, 
+    song_id VARCHAR(100), 
     title VARCHAR(100) NOT NULL, 
     artist_id VARCHAR(100) NOT NULL, 
     year SMALLINT NOT NULL, 
     duration DECIMAL NOT NULL
 )
-DISTSTYLE EVEN
-SORTKEY (artist_id);
+DISTSTYLE KEY
+DISTKEY (song_id);
 """)
 
 artist_table_create = ("""
-CREATE TABE dim_artist (
+CREATE TABLE dim_artist (
     -- id FLOAT DEFAULT nextval('dim_artist_seq') NOT NULL,
-    artist_id VARCHAR(100) PRIMARY KEY SORT KEY, 
+    artist_id VARCHAR(100), 
     name VARCHAR(100) NOT NULL, 
     location VARCHAR(200) NOT NULL, 
-    lattitude NULL, 
-    longitude NULL
+    lattitude FLOAT NULL, 
+    longitude FLOAT NULL
 )
-DISTSTYLE ALL
-SORTKEY (artist_id);
+DISTSTYLE ALL;
 """)
 
 time_table_create = ("""
-CREATE TABE dim_time (
+CREATE TABLE dim_time (
     -- id FLOAT DEFAULT nextval('dim_time_seq') NOT NULL,
-    start_time TIMESTAMP PRIMARY KEY SORT KEY, 
+    start_time TIMESTAMP, 
     hour SMALLINT NOT NULL, 
     day SMALLINT NOT NULL, 
     week SMALLINT NOT NULL, 
@@ -124,16 +123,18 @@ CREATE TABE dim_time (
     weekday SMALLINT NOT NULL
 )
 DISTSTYLE ALL
-SORTKEY (artist_id);
+SORTKEY (start_time);
 """)
 
 # STAGING TABLES
 
 # Invalid credentials. Must be of the format: credentials 'aws_iam_role=...' or 'aws_access_key_id=...;aws_secret_access_key=...[;token=...]'
 staging_events_copy = ("""
-COPY stg_events FROM {}
+COPY stg_events 
+FROM '{}'
 CREDENTIALS 'aws_iam_role={}'
-FORMAT AS json {};
+REGION 'us-west-2'
+FORMAT AS json '{}';
 """).format(config['S3']['SONG_DATA'], config['IAM_ROLE'], config['S3']['LOG_JSONPATH'])
 
 
@@ -142,9 +143,10 @@ FORMAT AS json {};
 # -- gzip delimiter ';' compupdate off region 'us-west-2';
 
 staging_songs_copy = ("""
-copy stg_songs from '{}' 
-credentials 'aws_iam_role={}' 
-gzip delimiter ';' compupdate off region 'us-west-2';
+COPY stg_songs 
+FROM '{}' 
+CREDENTIALS 'aws_iam_role={}' 
+REGION 'us-west-2';
 """).format(config['S3']['LOG_DATA'], config['IAM_ROLE'])
 
 # FINAL TABLES
