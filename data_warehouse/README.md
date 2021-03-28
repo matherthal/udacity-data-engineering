@@ -19,7 +19,7 @@ This data comes as json files in a S3 bucket at AWS, and the log events have a s
 
 The following figure depicts the schema in which the data will be available for querying after the ETL process:
 
-![alt text](https://github.com/matherthal/udacity-data-engineering/blob/master/start_schema.png?raw=true)
+![alt text](https://github.com/matherthal/udacity-data-engineering/blob/main/data_warehouse/start_schema.png)
 
 The facts are informations about the location of users, the level of service (i.e. free, paid) and their systems (browser, OS, etc). These facts refer to the song, the artist, the user and the time.
 
