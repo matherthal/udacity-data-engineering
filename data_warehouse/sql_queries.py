@@ -164,7 +164,7 @@ SELECT
 FROM stg_events evt
 JOIN stg_songs sng 
 	ON LOWER(evt.artist)=LOWER(sng.artist_name) AND LOWER(evt.song)=LOWER(sng.title)
-;
+WHERE evt.page = 'NextSong';
 """)
 
 user_table_insert = ("""
