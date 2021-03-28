@@ -25,11 +25,11 @@ def main():
     config.read('dwh.cfg')
 
     parser = argparse.ArgumentParser(description='Sparkfy ETL')
-    parser.add_argument('--load-stg', action='store_true', help='sum the integers (default: find the max)')
-    parser.add_argument('--insert-dw', action='store_true', help='sum the integers (default: find the max)')
-
+    parser.add_argument('--load-stg', action='store_true', 
+                        help='Load data fom S3 do staging tables')
+    parser.add_argument('--insert-dw', action='store_true', 
+                        help='Insert in DW data from staging tables')
     args = parser.parse_args()
-    print(args)
 
     conn = None
     try:
@@ -47,7 +47,6 @@ def main():
     finally:
         if conn:
             conn.close()
-
 
 if __name__ == "__main__":
     main()
