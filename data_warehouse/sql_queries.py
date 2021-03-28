@@ -153,30 +153,49 @@ FORMAT AS json '{}';
 """).format(config['S3']['LOG_DATA'], config['IAM_ROLE']['ARN'], config['S3']['LOG_JSONPATH'])
 
 # FINAL TABLES
+# All inserts below doesn't create duplicates (based on the dimensions ids)
 
+# By performing the left join and excluding the second term in WHERE clause (the coalesce filter),
+# we are capable of avoiding duplicates
 songplay_table_insert = ("""
 INSERT INTO fact_song_plays(
     user_id, song_id, artist_id, session_id, start_time, level, location, user_agent)
 SELECT 
-	userId AS user_id, song_id, artist_id, sessionId AS session_id, 
+	evt.userId AS user_id, 
+    sng.song_id, 
+    sng.artist_id, 
+    evt.sessionId AS session_id, 
     TIMESTAMP 'EPOCH' + (ts/1000) * interval '1 second' AS start_time, 
-    level, location, useragent AS user_agent
+    evt.level, 
+    evt.location, 
+    evt.useragent AS user_agent
 FROM stg_events evt
 JOIN stg_songs sng 
 	ON LOWER(evt.artist)=LOWER(sng.artist_name) AND LOWER(evt.song)=LOWER(sng.title)
-WHERE evt.page = 'NextSong';
+LEFT JOIN fact_song_plays fact
+    ON evt.userId = fact.user_id
+    AND sng.song_id = fact.song_id
+    AND sng.artist_id = fact.artist_id
+    AND TIMESTAMP 'EPOCH' + (evt.ts/1000) * interval '1 second' = fact.start_time
+WHERE evt.page = 'NextSong'
+    AND COALESCE(fact.id, -1) = -1
+;
 """)
 
 user_table_insert = ("""
 INSERT INTO dim_user(user_id, first_name, last_name, gender, level)
 SELECT userId, firstName, lastName, gender, level
-FROM stg_events;
+FROM stg_events
+WHERE
+    user_id NOT IN (SELECT DISTINCT user_id FROM dim_user);
 """)
 
 song_table_insert = ("""
 INSERT INTO dim_song (song_id, title, artist_id, year, duration)
 SELECT DISTINCT song_id, title, artist_id, year, duration
-FROM stg_songs;
+FROM stg_songs
+WHERE
+    song_id NOT IN (SELECT DISTINCT song_id FROM dim_song);
 """)
 
 artist_table_insert = ("""
@@ -187,7 +206,9 @@ SELECT DISTINCT
     artist_location,
     CAST (artist_latitude AS FLOAT),
 	CAST (artist_longitude AS FLOAT)
-FROM stg_songs;
+FROM stg_songs
+WHERE
+    artist_id NOT IN (SELECT DISTINCT artist_id FROM dim_artist);
 """)
 
 time_table_insert = ("""
@@ -203,7 +224,10 @@ SELECT DISTINCT
 FROM (
     SELECT TIMESTAMP 'EPOCH' + (ts/1000) * interval '1 second' AS start_time
     FROM stg_events
+    WHERE page = 'NextSong'
 ) AS t
+WHERE
+    t.start_time NOT IN (SELECT DISTINCT start_time FROM dim_time)
 ;
 """)
 
