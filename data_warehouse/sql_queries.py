@@ -30,7 +30,9 @@ CREATE TABLE stg_songs (
     title TEXT,
     duration DECIMAL,
     year SMALLINT
-);
+)
+DISTSTYLE KEY
+DISTKEY (artist_name, title);
 """)
 
 staging_events_table_create = ("""
@@ -53,7 +55,9 @@ CREATE TABLE stg_events (
     ts BIGINT,
     userAgent TEXT,
     userId INT
-);
+)
+DISTSTYLE KEY
+DISTKEY (artist, song);
 """)
 
 songplay_table_create = ("""
