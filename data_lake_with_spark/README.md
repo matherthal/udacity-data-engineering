@@ -32,7 +32,7 @@ Then the script can be executed with:
 spark-submit etl.py
 ```
 
-After processing, the data will be writen in `s3://udacity-study/datalake-table/` as defined in the `etl.py` script.
+After processing, the data will be writen in `s3://udacity-study/datalake-table/` as defined in the `dl.cfg` config file.
 
 ## Data Source
 
