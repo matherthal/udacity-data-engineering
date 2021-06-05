@@ -78,15 +78,6 @@ def process_log_data(spark, input_data, output_data):
     user_path = os.path.join(output_data, 'user')
     user_table.coalesce(1).write.mode('overwrite').parquet(user_path)
 
-    # create timestamp column from original timestamp column
-    # get_timestamp = F.udf(lambda x: x/1000)
-    # log_df = log_df.withColumn('ts_ms', get_timestamp('ts'))
-
-    # create datetime column from original timestamp column
-    # get_datetime = udf()
-    # df = df.withColumn('dt', F.from_unixtime((F.col('ts')/1000)))
-    # log_df = log_df.withColumn('dt', F.from_unixtime(F.col('ts_ms').cast(DateType())))
-
     # create datetime column from original timestamp column
     get_timestamp = F.udf(
         lambda x : datetime.utcfromtimestamp(int(x)/1000), TimestampType())
@@ -112,6 +103,7 @@ def process_log_data(spark, input_data, output_data):
     song_df = spark.read.parquet(os.path.join(output_data, 'song'))
     artist_df = spark.read.parquet(os.path.join(output_data, 'artist'))
 
+    # join artist and song data
     song_df = artist_df.select(['artist_name', 'artist_id'])\
         .join(song_df, on='artist_id', how='inner')
 
@@ -120,9 +112,9 @@ def process_log_data(spark, input_data, output_data):
         (song_df.title == log_df.song) \
         & (song_df.artist_name == log_df.artist) \
         & (song_df.duration == log_df.length)
-    songplays_table = log_df.join(song_df, on_clause, how='left')
-    # FIXME: LEFT
-        
+    songplays_table = log_df.join(song_df, on_clause, how='inner')
+
+    # select columns and create year and month columns
     songplays_table = songplays_table.select(
         'start_time',
         F.col('userId').alias('user_id'),
@@ -134,20 +126,14 @@ def process_log_data(spark, input_data, output_data):
         F.col('userAgent').alias('user_agent'),
         F.month('start_time').alias('month'),
         F.year('start_time').alias('year'))
-    # songplays_table = songplays_table.selectExpr(
-    #     'start_time', 'userId as user_id', 'level', 'song_id', 'artist_id',
-    #     'itemInSession as session_id', 'location', 'userAgent as user_agent',
-    #     'year', 'month')
-    # "unix_timestamp('ts', 'yyyy') as year"
 
+    # create songplay_id and drop duplicates by this column
     key_columns = [
         'start_time', 'user_id', 'song_id', 'artist_id', 'session_id']
     songplays_table = songplays_table.withColumn(
         'songplay_id', 
         F.sha2(F.concat_ws("||", *key_columns), 256)
     ).drop_duplicates(['songplay_id'])
-
-    print(songplays_table.show())
 
     # write songplays table to parquet files partitioned by year and month
     songplays_table.coalesce(1).write.mode('overwrite')\
