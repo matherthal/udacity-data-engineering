@@ -1,6 +1,8 @@
 import configparser
 import os
+from datetime import datetime
 from pyspark.sql import SparkSession
+from pyspark.sql.types import TimestampType
 import pyspark.sql.functions as F
 
 config = configparser.ConfigParser()
@@ -30,15 +32,13 @@ def process_song_data(spark, input_data, output_data):
         input_data (str): The input files path
         output_data (str): The output files path
     """
-    # get filepath to song data file
-    song_data = os.path.join(input_data, 'song_data/*/*/*/*.json')
-
     # read song data file
-    df = spark.read.json(song_data)
+    df = spark.read.json(input_data)
 
     # extract columns to create songs table
     songs_table = df.select([
-        'song_id', 'title', 'artist_id', 'year','duration']).drop_duplicates()
+        'song_id', 'title', 'artist_id', 'year','duration']
+    ).drop_duplicates(['song_id', 'artist_id'])
 
     # write songs table to parquet files partitioned by year and artist
     songs_table.coalesce(1).write.mode('overwrite')\
@@ -49,7 +49,7 @@ def process_song_data(spark, input_data, output_data):
     artists_table = df.select([
         'artist_id', 'artist_name', 'artist_location', 'artist_latitude', 
         'artist_longitude'
-    ]).drop_duplicates()
+    ]).drop_duplicates(['artist_id'])
 
     # write artists table to parquet files
     artists_table.coalesce(1).write.mode('overwrite')\
@@ -64,11 +64,8 @@ def process_log_data(spark, input_data, output_data):
         input_data (str): The input files path
         output_data (str): The output files path
     """
-    # get filepath to log data file
-    log_data = os.path.join(input_data, 'log_data/*/*/*.json')
-
     # read log data file
-    log_df = spark.read.json(log_data)
+    log_df = spark.read.json(input_data)
 
     # filter by actions for song plays
     log_df = log_df.where(F.col('page')=='NextSong')
@@ -82,24 +79,29 @@ def process_log_data(spark, input_data, output_data):
     user_table.coalesce(1).write.mode('overwrite').parquet(user_path)
 
     # create timestamp column from original timestamp column
-    get_timestamp = F.udf(lambda x: x/1000)
-    log_df = log_df.withColumn('ts_ms', get_timestamp('ts'))
+    # get_timestamp = F.udf(lambda x: x/1000)
+    # log_df = log_df.withColumn('ts_ms', get_timestamp('ts'))
 
     # create datetime column from original timestamp column
     # get_datetime = udf()
     # df = df.withColumn('dt', F.from_unixtime((F.col('ts')/1000)))
-    log_df = log_df.withColumn('dt', F.from_unixtime(F.col('ts_ms')))
+    # log_df = log_df.withColumn('dt', F.from_unixtime(F.col('ts_ms').cast(DateType())))
+
+    # create datetime column from original timestamp column
+    get_timestamp = F.udf(
+        lambda x : datetime.utcfromtimestamp(int(x)/1000), TimestampType())
+    log_df = log_df.withColumn("start_time", get_timestamp("ts"))
 
     # extract columns to create time table
     time_table = log_df.select(
-        'ts', 
-        F.hour('dt').alias('hour'), 
-        F.dayofmonth('dt').alias('day'), 
-        F.weekofyear('dt').alias('weekofyear'),
-        F.month('dt').alias('month'),
-        F.year('dt').alias('year'),
-        F.dayofweek('dt').alias('weekday')
-    )
+        'start_time',
+        F.hour('start_time').alias('hour'), 
+        F.dayofmonth('start_time').alias('day'), 
+        F.weekofyear('start_time').alias('weekofyear'),
+        F.month('start_time').alias('month'),
+        F.year('start_time').alias('year'),
+        F.dayofweek('start_time').alias('weekday')
+    ).drop_duplicates(['start_time'])
 
     # write time table to parquet files partitioned by year and month
     time_table.coalesce(1).write.mode('overwrite')\
@@ -118,19 +120,34 @@ def process_log_data(spark, input_data, output_data):
         (song_df.title == log_df.song) \
         & (song_df.artist_name == log_df.artist) \
         & (song_df.duration == log_df.length)
-    songplays_table = log_df.join(song_df, on_clause, how='inner')
-
-    songplays_table = songplays_table.selectExpr(
-        'ts as start_time', 'userId as user_id', 'level', 'song_id', 
-        'artist_id', 'itemInSession as session_id', 'location', 
-        'userAgent as user_agent')
+    songplays_table = log_df.join(song_df, on_clause, how='left')
+    # FIXME: LEFT
+        
+    songplays_table = songplays_table.select(
+        'start_time',
+        F.col('userId').alias('user_id'),
+        'level',
+        'song_id',
+        'artist_id',
+        F.col('itemInSession').alias('session_id'),
+        'location',
+        F.col('userAgent').alias('user_agent'),
+        F.month('start_time').alias('month'),
+        F.year('start_time').alias('year'))
+    # songplays_table = songplays_table.selectExpr(
+    #     'start_time', 'userId as user_id', 'level', 'song_id', 'artist_id',
+    #     'itemInSession as session_id', 'location', 'userAgent as user_agent',
+    #     'year', 'month')
+    # "unix_timestamp('ts', 'yyyy') as year"
 
     key_columns = [
         'start_time', 'user_id', 'song_id', 'artist_id', 'session_id']
-    song_plays = song_plays.withColumn(
+    songplays_table = songplays_table.withColumn(
         'songplay_id', 
         F.sha2(F.concat_ws("||", *key_columns), 256)
-    )
+    ).drop_duplicates(['songplay_id'])
+
+    print(songplays_table.show())
 
     # write songplays table to parquet files partitioned by year and month
     songplays_table.coalesce(1).write.mode('overwrite')\
@@ -140,11 +157,12 @@ def process_log_data(spark, input_data, output_data):
 def main():
     spark = create_spark_session()
     try:
-        input_data = "s3a://udacity-dend/"
-        output_data = "s3a://udacity-study/datalake-table/"
+        input_log_data = config['PATHS']['INPUT_LOG_DATA']
+        input_song_data = config['PATHS']['INPUT_SONG_DATA']
+        output_data = config['PATHS']['OUTPUT_DATA']
 
-        process_song_data(spark, input_data, output_data)    
-        process_log_data(spark, input_data, output_data)
+        # process_song_data(spark, input_song_data, output_data)    
+        process_log_data(spark, input_log_data, output_data)
     finally:
         if spark:
             spark.stop()
