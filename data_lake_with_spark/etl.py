@@ -167,7 +167,6 @@ def main():
 
     log4j_logger = spark.sparkContext._jvm.org.apache.log4j
     LOGGER = log4j_logger.LogManager.getLogger(__name__)
-    LOGGER.info('Hello, world!')
 
     try:
         input_log_data = config['PATHS']['INPUT_LOG_DATA']
