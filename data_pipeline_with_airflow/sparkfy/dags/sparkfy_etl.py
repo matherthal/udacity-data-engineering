@@ -18,7 +18,6 @@ song_data = 's3://udacity-dend/song_data'
 default_args = {
     'owner': 'udacity',
     'start_date': datetime(2021, 6, 27),
-    'email_on_failure': True,
     'email_on_retry': False,
     'retries': 3,
     'retry_delay': timedelta(minutes=5)
@@ -27,7 +26,8 @@ default_args = {
 dag = DAG('sparkfy_etl',
           default_args=default_args,
           description='Load and transform data in Redshift with Airflow',
-          schedule_interval='0 * * * *'
+          schedule_interval='0 * * * *',
+          catchup = False
         )
 
 start_operator = DummyOperator(task_id='Begin_execution',  dag=dag)
@@ -99,10 +99,20 @@ load_time_dimension_table = LoadDimensionOperator(
     redshift_conn_id='redshift'
 )
 
+# Create pairs for query:expected_result to validate cases where the id is null
+dq_queries = [
+    SqlQueries.dq_users_not_null, 
+    SqlQueries.dq_songs_not_null,
+    SqlQueries.dq_artists_not_null, 
+    SqlQueries.dq_time_not_null,
+    SqlQueries.dq_songplays_not_null
+]
+dq_checks = [{'query': q, 'expected_result': 0} for q in dq_queries]
+
 run_quality_checks = DataQualityOperator(
     task_id='Run_data_quality_checks',
     dag=dag,
-    table_list=['users', 'time', 'songs', 'artists', 'songplays'],
+    checks=dq_checks,
     redshift_conn_id='redshift',
     execution_date='{{ execution_date }}'
 )

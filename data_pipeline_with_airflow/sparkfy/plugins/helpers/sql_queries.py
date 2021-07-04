@@ -44,3 +44,13 @@ LEFT JOIN staging_songs songs
                extract(month from start_time), extract(year from start_time), extract(dayofweek from start_time)
         FROM songplays
     """)
+
+    dq_users_not_null = "select count(1) from users where userid is null;"
+
+    dq_songs_not_null = "select count(1) from songs where songid is null;"
+
+    dq_artists_not_null = "select count(1) from artists where artistid is null;"
+
+    dq_time_not_null = "select count(1) from time where start_time is null;"
+
+    dq_songplays_not_null = "select count(1) from songplays where playid is null;"
