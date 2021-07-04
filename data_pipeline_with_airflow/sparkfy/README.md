@@ -1,4 +1,4 @@
-# Sparkfy DW
+# Sparkfy Airflow Pipeline
 
 The Sparkfy process to allow the analysis of song listening data.
 
