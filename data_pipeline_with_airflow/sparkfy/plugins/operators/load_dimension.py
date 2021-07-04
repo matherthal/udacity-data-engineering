@@ -10,6 +10,7 @@ class LoadDimensionOperator(BaseOperator):
     def __init__(self,
                  query,
                  table_name,
+                 recreate=False,
                  redshift_conn_id='redshift',
                  *args, **kwargs):
 
@@ -17,24 +18,24 @@ class LoadDimensionOperator(BaseOperator):
         self.query = query
         self.redshift_conn_id = redshift_conn_id
         self.table_name = table_name
+        self.recreate = recreate
 
     def execute(self, context):
         self.log.info(f'Loading dimensions in table {self.table_name}')
 
         redshift = PostgresHook(self.redshift_conn_id)
         try:
-            sql = '''
-                BEGIN;
+            sql = 'BEGIN;'
+            if self.recreate:
+                sql += f'\nTRUNCATE {self.table_name};\n'
 
-                TRUNCATE {table_name};
-
-                INSERT INTO {table_name}
-                SELECT * FROM (
-                    {query}
-                ) t;
-
-                COMMIT;
-                '''.format(
+            sql += '''
+            INSERT INTO {table_name}
+            SELECT * FROM (
+                {query}
+            ) t;
+            COMMIT;
+            '''.format(
                     table_name=self.table_name,
                     query=self.query
                 )
